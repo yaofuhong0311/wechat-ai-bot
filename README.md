@@ -23,8 +23,8 @@ flowchart LR
     AT -->|no| END1[done]
     AT -->|yes| CTX[assemble context]
 
-    USR[(users/{wxid}.md)] --> CTX
-    GRP[(groups/history.jsonl<br/>+ summary.md)] --> CTX
+    USR[("users/&#123;wxid&#125;.md")] --> CTX
+    GRP[("groups/history.jsonl<br/>+ summary.md")] --> CTX
     BUF[(realtime buffer<br/>last 20 msgs)] --> CTX
 
     CTX --> CC[Claude Agent SDK]

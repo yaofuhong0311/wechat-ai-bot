@@ -23,8 +23,8 @@ flowchart LR
     AT -->|否| END1[结束]
     AT -->|是| CTX[组装上下文]
 
-    USR[(users/{wxid}.md<br/>用户档案)] --> CTX
-    GRP[(groups/history.jsonl<br/>+ summary.md)] --> CTX
+    USR[("users/&#123;wxid&#125;.md<br/>用户档案")] --> CTX
+    GRP[("groups/history.jsonl<br/>+ summary.md")] --> CTX
     BUF[(实时缓冲<br/>最近20条群消息)] --> CTX
 
     CTX --> CC[Claude Agent SDK]
