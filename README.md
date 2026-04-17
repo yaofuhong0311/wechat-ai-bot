@@ -15,25 +15,41 @@ The bot sits in a WeChat group, responds when mentioned (`@bot`), and can:
 ## Architecture
 
 ```mermaid
-flowchart LR
-    WX[WeChat Group] -->|message| WK[wkteam gateway]
-    WK -->|webhook| APP[FastAPI /sync]
-    APP --> REC[record to buffer<br/>+ download media]
-    REC --> AT{"@bot?"}
-    AT -->|no| END1[done]
-    AT -->|yes| CTX[assemble context]
+sequenceDiagram
+    autonumber
+    participant U as User (WeChat Group)
+    participant W as wkteam Gateway
+    participant A as FastAPI /sync
+    participant M as Memory (disk)
+    participant C as Claude Agent SDK
 
-    USR[("users/&#123;wxid&#125;.md")] --> CTX
-    GRP[("groups/history.jsonl<br/>+ summary.md")] --> CTX
-    BUF[(realtime buffer<br/>last 20 msgs)] --> CTX
+    U->>W: send message
+    W->>A: webhook POST
+    A->>A: record to realtime buffer<br/>(download media if any)
 
-    CTX --> CC[Claude Agent SDK]
-    CC -->|tools| TOOLS["WebFetch / WebSearch<br/>Bash / Read / Write"]
-    CC -->|reply| SEND[send to WeChat]
-    SEND --> SAVE[save Q&A to history]
-    SAVE --> EXT[background extract<br/>update user profile]
-    SAVE --> COMP{history > 100?}
-    COMP -->|yes| COMP2[compress to summary]
+    alt message is @bot
+        A->>M: load user profile + group history
+        M-->>A: context
+        A->>C: prompt = context + question
+        C->>C: reason + use tools<br/>(WebFetch/Bash/Read/Write)
+        C-->>A: reply
+        A->>W: send reply
+        W->>U: deliver
+
+        par save & maintain
+            A->>M: append Q&A to history.jsonl
+        and
+            A->>C: extract user facts
+            C-->>A: profile delta or NO_UPDATE
+            A->>M: write users/{wxid}.md
+        and
+            opt history > 100
+                A->>C: compress oldest 80
+                C-->>A: summary
+                A->>M: save summary.md
+            end
+        end
+    end
 ```
 
 Each `@bot` message triggers a new Agent SDK query. The bot runs in a sandboxed container with Read/Write/Bash/WebFetch/WebSearch tools, and has access to custom skills installed under `.agents/skills/`.

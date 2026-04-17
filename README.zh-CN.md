@@ -15,25 +15,41 @@ Bot 常驻在微信群里，被 @ 时响应。能做：
 ## 架构
 
 ```mermaid
-flowchart LR
-    WX[微信群] -->|消息| WK[wkteam 网关]
-    WK -->|webhook| APP[FastAPI /sync]
-    APP --> REC[写入缓冲<br/>+ 下载媒体]
-    REC --> AT{"@bot 了?"}
-    AT -->|否| END1[结束]
-    AT -->|是| CTX[组装上下文]
+sequenceDiagram
+    autonumber
+    participant U as 用户（微信群）
+    participant W as wkteam 网关
+    participant A as FastAPI /sync
+    participant M as Memory（磁盘）
+    participant C as Claude Agent SDK
 
-    USR[("users/&#123;wxid&#125;.md<br/>用户档案")] --> CTX
-    GRP[("groups/history.jsonl<br/>+ summary.md")] --> CTX
-    BUF[(实时缓冲<br/>最近20条群消息)] --> CTX
+    U->>W: 发送消息
+    W->>A: webhook POST
+    A->>A: 写入实时缓冲<br/>（有媒体则下载）
 
-    CTX --> CC[Claude Agent SDK]
-    CC -->|工具| TOOLS["WebFetch / WebSearch<br/>Bash / Read / Write"]
-    CC -->|回复| SEND[发送到微信]
-    SEND --> SAVE[保存问答到 history]
-    SAVE --> EXT[异步提取<br/>更新用户档案]
-    SAVE --> COMP{history > 100?}
-    COMP -->|是| COMP2[压缩成 summary]
+    alt 消息 @bot
+        A->>M: 读用户档案 + 群历史
+        M-->>A: 上下文
+        A->>C: prompt = 上下文 + 问题
+        C->>C: 思考 + 用工具<br/>（WebFetch/Bash/Read/Write）
+        C-->>A: 回复
+        A->>W: 发送回复
+        W->>U: 送达
+
+        par 保存 & 维护
+            A->>M: 追加问答到 history.jsonl
+        and
+            A->>C: 提取用户信息
+            C-->>A: 档案增量 或 NO_UPDATE
+            A->>M: 写 users/{wxid}.md
+        and
+            opt history > 100 条
+                A->>C: 压缩最老 80 条
+                C-->>A: 摘要
+                A->>M: 保存 summary.md
+            end
+        end
+    end
 ```
 
 每次 @bot 都会触发一次新的 Agent SDK 调用。Bot 跑在容器里，拥有 Read/Write/Bash/WebFetch/WebSearch 等工具，还能加载 `.agents/skills/` 下的自定义 skill。
