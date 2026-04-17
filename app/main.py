@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -264,7 +265,7 @@ async def handle_group_text(data: dict):
     if len(reply) > 4000:
         reply = reply[:3997] + "..."
 
-    # Save to memory
+    # Save Q&A to persistent history (fast, local disk write)
     memory.save_exchange(from_group, from_user, cleaned, reply)
 
     # Send reply first (don't block on memory maintenance)
@@ -273,17 +274,19 @@ async def handle_group_text(data: dict):
     except Exception:
         logger.exception("Send failed")
 
-    # Memory maintenance (async, after reply)
-    try:
-        await _update_user_profile(from_user, cleaned, reply)
-    except Exception:
-        logger.exception("User profile update failed")
-
+    # Memory maintenance: run extract + compress concurrently
+    maintenance_tasks = [_safe(_update_user_profile(from_user, cleaned, reply), "profile")]
     if memory.needs_compression(from_group):
-        try:
-            await _compress_memory(from_group)
-        except Exception:
-            logger.exception("Group memory compression failed")
+        maintenance_tasks.append(_safe(_compress_memory(from_group), "compress"))
+    await asyncio.gather(*maintenance_tasks)
+
+
+async def _safe(coro, label: str):
+    """Run a coroutine, swallowing and logging exceptions so sibling tasks aren't cancelled."""
+    try:
+        await coro
+    except Exception:
+        logger.exception("%s task failed", label)
 
 
 async def _update_user_profile(wxid: str, question: str, reply: str):
