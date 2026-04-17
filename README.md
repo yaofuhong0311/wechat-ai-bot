@@ -14,13 +14,26 @@ The bot sits in a WeChat group, responds when mentioned (`@bot`), and can:
 
 ## Architecture
 
-```
-WeChat ──▶ wkteam ──▶ FastAPI webhook ──▶ context assembly ──▶ Claude Agent SDK ──▶ reply
-                          │                      │
-                          ▼                      ▼
-                    /memory/groups/        /memory/users/
-                    ├─ history.jsonl      (per-user profiles,
-                    └─ summary.md         CC self-maintained)
+```mermaid
+flowchart LR
+    WX[WeChat Group] -->|message| WK[wkteam gateway]
+    WK -->|webhook| APP[FastAPI /sync]
+    APP --> REC[record to buffer<br/>+ download media]
+    REC --> AT{"@bot?"}
+    AT -->|no| END1[done]
+    AT -->|yes| CTX[assemble context]
+
+    USR[(users/{wxid}.md)] --> CTX
+    GRP[(groups/history.jsonl<br/>+ summary.md)] --> CTX
+    BUF[(realtime buffer<br/>last 20 msgs)] --> CTX
+
+    CTX --> CC[Claude Agent SDK]
+    CC -->|tools| TOOLS["WebFetch / WebSearch<br/>Bash / Read / Write"]
+    CC -->|reply| SEND[send to WeChat]
+    SEND --> SAVE[save Q&A to history]
+    SAVE --> EXT[background extract<br/>update user profile]
+    SAVE --> COMP{history > 100?}
+    COMP -->|yes| COMP2[compress to summary]
 ```
 
 Each `@bot` message triggers a new Agent SDK query. The bot runs in a sandboxed container with Read/Write/Bash/WebFetch/WebSearch tools, and has access to custom skills installed under `.agents/skills/`.

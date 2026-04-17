@@ -295,18 +295,22 @@ async def _update_user_profile(wxid: str, question: str, reply: str):
     current = memory.load_user_profile(wxid)
 
     extraction_prompt = (
-        "任务：根据本次对话判断是否有关于用户的新信息需要更新到档案。\n\n"
+        "任务：根据本次对话判断是否有关于【用户本人】的新信息需要更新到档案。\n\n"
         f"用户ID: {wxid}\n"
         f"现有档案:\n{current or '（空）'}\n\n"
         f"本次对话:\n用户: {question}\nbot: {reply}\n\n"
         "规则：\n"
-        "- 只提取关于【用户本人】的长期事实（体重/水平/车型/常骑路线/偏好/身份）\n"
+        "- 【严格判断主语】只提取关于发言用户本人的事实，不提取关于其他人的信息\n"
+        "- 如果用户在说『他/她/某人如何』，那不是用户本人的信息，忽略\n"
+        "- 如果用户在说『我如何』或用户在回答关于自己的问题，才算用户本人信息\n"
+        "- 只记录长期事实（体重/水平/车型/常骑路线/偏好/身份）\n"
         "- 忽略一次性问题、天气查询、临时讨论\n"
         "- 如果没有新信息，只输出 NO_UPDATE（不要加任何别的文字）\n"
         "- 如果有新信息，输出【完整的更新后档案文字】（不要加解释、不要markdown、不要代码块）\n"
     )
 
     output = await llm.extract(extraction_prompt)
+    logger.info("User profile extraction for %s: output=%r", wxid, output[:200] if output else None)
     if not output or output.strip() == "NO_UPDATE":
         return
 

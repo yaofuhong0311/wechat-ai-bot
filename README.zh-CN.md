@@ -14,13 +14,26 @@ Bot 常驻在微信群里，被 @ 时响应。能做：
 
 ## 架构
 
-```
-微信 ──▶ wkteam ──▶ FastAPI webhook ──▶ 组装上下文 ──▶ Claude Agent SDK ──▶ 回复
-                         │                   │
-                         ▼                   ▼
-                   /memory/groups/      /memory/users/
-                   ├─ history.jsonl    （用户画像，
-                   └─ summary.md        由 CC 自己维护）
+```mermaid
+flowchart LR
+    WX[微信群] -->|消息| WK[wkteam 网关]
+    WK -->|webhook| APP[FastAPI /sync]
+    APP --> REC[写入缓冲<br/>+ 下载媒体]
+    REC --> AT{"@bot 了?"}
+    AT -->|否| END1[结束]
+    AT -->|是| CTX[组装上下文]
+
+    USR[(users/{wxid}.md<br/>用户档案)] --> CTX
+    GRP[(groups/history.jsonl<br/>+ summary.md)] --> CTX
+    BUF[(实时缓冲<br/>最近20条群消息)] --> CTX
+
+    CTX --> CC[Claude Agent SDK]
+    CC -->|工具| TOOLS["WebFetch / WebSearch<br/>Bash / Read / Write"]
+    CC -->|回复| SEND[发送到微信]
+    SEND --> SAVE[保存问答到 history]
+    SAVE --> EXT[异步提取<br/>更新用户档案]
+    SAVE --> COMP{history > 100?}
+    COMP -->|是| COMP2[压缩成 summary]
 ```
 
 每次 @bot 都会触发一次新的 Agent SDK 调用。Bot 跑在容器里，拥有 Read/Write/Bash/WebFetch/WebSearch 等工具，还能加载 `.agents/skills/` 下的自定义 skill。
