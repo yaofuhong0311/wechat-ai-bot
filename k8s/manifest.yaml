@@ -18,6 +18,8 @@ data:
   # Optional: override if using a Claude API proxy
   # ANTHROPIC_BASE_URL: "https://api.anthropic.com"
   PORT: "8000"
+  # Container timezone — keeps log timestamps and in-process scheduled tasks in local time
+  TZ: "Asia/Shanghai"
   # Comma-separated chatroom IDs; leave empty to allow all
   ALLOWED_GROUPS: ""
 ---
