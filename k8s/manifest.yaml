@@ -1,0 +1,106 @@
+# =============================================================================
+# wechat-ai-bot Kubernetes manifest
+#
+# Before applying:
+#   1. Copy this file and replace <PLACEHOLDERS> with real values, OR
+#   2. Use `kubectl create secret generic panorama-data-sync-secret --from-env-file=.env`
+#
+# DO NOT commit a filled-in version of this file.
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: panorama-data-sync-config
+  namespace: default
+data:
+  WKTEAM_API_URL: "http://<WKTEAM_GATEWAY_HOST>:<PORT>"
+  # Optional: override if using a Claude API proxy
+  # ANTHROPIC_BASE_URL: "https://api.anthropic.com"
+  PORT: "8000"
+  # Comma-separated chatroom IDs; leave empty to allow all
+  ALLOWED_GROUPS: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: panorama-data-sync-secret
+  namespace: default
+type: Opaque
+stringData:
+  WKTEAM_TOKEN: "<YOUR_WKTEAM_TOKEN>"
+  WKTEAM_WID: "<YOUR_WKTEAM_WID>"
+  BOT_WCID: "<YOUR_BOT_WXID>"
+  ANTHROPIC_API_KEY: "<YOUR_ANTHROPIC_API_KEY>"
+  WEBHOOK_SECRET: "<RANDOM_STRING>"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panorama-data-sync
+  namespace: default
+  labels:
+    app: panorama-data-sync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: panorama-data-sync
+  template:
+    metadata:
+      labels:
+        app: panorama-data-sync
+    spec:
+      containers:
+        - name: app
+          image: <YOUR_REGISTRY>/wechat-ai-bot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: panorama-data-sync-config
+            - secretRef:
+                name: panorama-data-sync-secret
+          volumeMounts:
+            - name: memory
+              mountPath: /project/memory
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: memory
+          persistentVolumeClaim:
+            claimName: panorama-memory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: panorama-memory
+  namespace: default
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: panorama-data-sync
+  namespace: default
+spec:
+  selector:
+    app: panorama-data-sync
+  ports:
+    - port: 8000
+      targetPort: 8000
